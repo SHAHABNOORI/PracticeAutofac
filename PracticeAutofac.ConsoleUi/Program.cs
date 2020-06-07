@@ -19,6 +19,7 @@ namespace PracticeAutofac.ConsoleUi
             Console.ReadKey();
 
 
+
             //MetaDataWithSettingSample(builder);
             //MetaDataSample(builder);
             //EnumerationSample(builder);

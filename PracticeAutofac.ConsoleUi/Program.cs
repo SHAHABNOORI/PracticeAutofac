@@ -1,10 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Reflection;
 using Autofac;
-using Autofac.Core;
-using Microsoft.VisualBasic;
 using PracticeAutofac.Library;
 using Service = PracticeAutofac.Library.Service;
 
@@ -16,10 +13,15 @@ namespace PracticeAutofac.ConsoleUi
         {
             var builder = new ContainerBuilder();
 
+
+
             Console.ReadKey();
 
-
-
+            //StartableSample(builder);
+            //LifetimeEventsSampleOne(builder);
+            //DisposalSample(builder);
+            //CaptiveDependenciesSample(builder);
+            //KeyedServiceSample(builder);
             //MetaDataWithSettingSample(builder);
             //MetaDataSample(builder);
             //EnumerationSample(builder);
@@ -40,27 +42,138 @@ namespace PracticeAutofac.ConsoleUi
             //FasleDovom();
         }
 
+        private static void StartableSample(ContainerBuilder builder)
+        {
+            builder.RegisterType<MyClass>().AsSelf().As<IStartable>().SingleInstance();
+            var container = builder.Build();
+            container.Resolve<MyClass>();
+        }
+
+        private static void LifetimeEventsSampleTwo(ContainerBuilder builder)
+        {
+            builder.RegisterType<Parent>();
+            builder.RegisterType<BadChild>();
+            builder.RegisterType<Child>()
+                //Before component be in use
+                .OnActivating(handler =>
+                {
+                    Console.WriteLine("Child Activating...");
+
+                    //Property Injection
+                    handler.ReplaceInstance(handler.Context.Resolve<BadChild>());
+                    handler.Instance.ChildId = Guid.NewGuid();
+                    handler.Instance.Parent = handler.Context.Resolve<Parent>();
+                }).OnActivated(handler => { Console.WriteLine("Child Activated"); }).OnRelease(handler =>
+                {
+                    Console.WriteLine("Child about to be removed");
+                });
+
+            //ERROR
+            //builder.RegisterType<ConsoleLog>().As<ILog>()
+            //    .OnActivating(handler => handler.ReplaceInstance(new SmsLog("09359167820")));
+
+            builder.RegisterType<ConsoleLog>().AsSelf();
+            builder.Register<ILog>(log => log.Resolve<ConsoleLog>())
+                .OnActivating(handler => handler.ReplaceInstance(new SmsLog("09359167820")));
+
+            using (var scope = builder.Build().BeginLifetimeScope())
+            {
+                var child = scope.Resolve<Child>();
+                var parent = child.Parent;
+                Console.WriteLine($"Parent :: {parent}");
+                Console.WriteLine($"Child :: {child}");
+
+                var log = scope.Resolve<ILog>();
+                log.Write("Hello World.....");
+            }
+        }
+
+        private static void LifetimeEventsSampleOne(ContainerBuilder builder)
+        {
+            builder.RegisterType<Parent>();
+            builder.RegisterType<Child>()
+                //Before component be in use
+                .OnActivating(handler =>
+                {
+                    Console.WriteLine("Child Activating...");
+
+                    //Property Injection
+                    handler.Instance.ChildId = Guid.NewGuid();
+                    handler.Instance.Parent = handler.Context.Resolve<Parent>();
+                }).OnActivated(handler => { Console.WriteLine("Child Activated"); }).OnRelease(handler =>
+                {
+                    Console.WriteLine("Child about to be removed");
+                });
+
+            using (var scope = builder.Build().BeginLifetimeScope())
+            {
+                var child = scope.Resolve<Child>();
+                var parent = child.Parent;
+                Console.WriteLine(parent);
+            }
+        }
+
+        private static void DisposalSample(ContainerBuilder builder)
+        {
+            builder.RegisterType<ConsoleLog>().ExternallyOwned();
+            var container = builder.Build();
+
+            using (var scope = container.BeginLifetimeScope())
+            {
+                scope.Resolve<ConsoleLog>();
+            }
+        }
+
+        private static void CaptiveDependenciesSample(ContainerBuilder builder)
+        {
+            builder.RegisterType<ResourceManager>().SingleInstance();
+            builder.RegisterType<SingletonResource>().As<IResource>().SingleInstance();
+            builder.RegisterType<InstancePerDependencyResource>().As<IResource>().InstancePerDependency();
+
+            using (var container = builder.Build())
+            {
+                using (var scope = container.BeginLifetimeScope())
+                {
+                    var resourceManagerOne = scope.Resolve<ResourceManager>();
+                    var resourceManagerTwo = scope.Resolve<ResourceManager>();
+
+                    foreach (var resource in resourceManagerOne.Resources)
+                    {
+                        resource.GuidGenerator("Resource Manager One :: ");
+                    }
+
+                    foreach (var resource in resourceManagerTwo.Resources)
+                    {
+                        resource.GuidGenerator("Resource Manager Two :: ");
+                    }
+                }
+            }
+        }
+
+        private static void KeyedServiceSample(ContainerBuilder builder)
+        {
+            builder.RegisterType<ConsoleLogger>().Keyed<ILogger>("cmd");
+            builder.Register(c => new SmsLogger("09359167820")).Keyed<ILogger>("sms");
+            builder.RegisterType<KeyedServiceReporting>();
+            using var container = builder.Build();
+            container.Resolve<KeyedServiceReporting>().Report();
+        }
+
         private static void MetaDataWithSettingSample(ContainerBuilder builder)
         {
             builder.RegisterType<ConsoleLogger>().WithMetadata<Settings>(
                 c => c.For(x => x.LogMode, "verbose"));
             builder.RegisterType<MetaDataWithSettingReporting>();
-
-            using (var container = builder.Build())
-            {
-                container.Resolve<MetaDataWithSettingReporting>().Report();
-            }
+            using var container = builder.Build();
+            container.Resolve<MetaDataWithSettingReporting>().Report();
         }
 
         private static void MetaDataSample(ContainerBuilder builder)
         {
             builder.RegisterType<ConsoleLogger>().WithMetadata("mode", "verbose");
             builder.RegisterType<MetaDataReporting>();
-
-            using (var container = builder.Build())
-            {
-                container.Resolve<MetaDataReporting>().Report();
-            }
+            using var container = builder.Build();
+            container.Resolve<MetaDataReporting>().Report();
         }
 
         private static void EnumerationSample(ContainerBuilder builder)
@@ -69,11 +182,8 @@ namespace PracticeAutofac.ConsoleUi
             //builder.RegisterType<ConsoleLogger>().SingleInstance();
             builder.Register(c => new SmsLogger("09359167820")).As<ILogger>();
             builder.RegisterType<EnumerationReporting>();
-
-            using (var container = builder.Build())
-            {
-                container.Resolve<EnumerationReporting>().Report();
-            }
+            using var container = builder.Build();
+            container.Resolve<EnumerationReporting>().Report();
         }
 
         private static void ParameterizedInstantiationSample(ContainerBuilder builder)
@@ -82,11 +192,8 @@ namespace PracticeAutofac.ConsoleUi
             //builder.RegisterType<ConsoleLogger>().SingleInstance();
             builder.RegisterType<SmsLogger>();
             builder.RegisterType<DynamicReporting>();
-
-            using (var container = builder.Build())
-            {
-                container.Resolve<DynamicReporting>().Report();
-            }
+            using var container = builder.Build();
+            container.Resolve<DynamicReporting>().Report();
         }
 
         private static void DynamicInstantiationSample(ContainerBuilder builder)
@@ -95,34 +202,25 @@ namespace PracticeAutofac.ConsoleUi
             //builder.RegisterType<ConsoleLogger>().SingleInstance();
             builder.RegisterType<SmsLogger>();
             builder.RegisterType<DynamicReporting>();
-
-            using (var container = builder.Build())
-            {
-                container.Resolve<DynamicReporting>().Report();
-            }
+            using var container = builder.Build();
+            container.Resolve<DynamicReporting>().Report();
         }
 
         private static void ControlledInstantiationSample(ContainerBuilder builder)
         {
             builder.RegisterType<ConsoleLogger>();
             builder.RegisterType<OwnedReporting>();
-
-            using (var container = builder.Build())
-            {
-                container.Resolve<OwnedReporting>().ReportOnce();
-                Console.WriteLine("Done Reporting");
-            }
+            using var container = builder.Build();
+            container.Resolve<OwnedReporting>().ReportOnce();
+            Console.WriteLine("Done Reporting");
         }
 
         private static void DelayedInstantianSample(ContainerBuilder builder)
         {
             builder.RegisterType<ConsoleLogger>();
             builder.RegisterType<Reporting>();
-
-            using (var container = builder.Build())
-            {
-                container.Resolve<Reporting>().Report();
-            }
+            using var container = builder.Build();
+            container.Resolve<Reporting>().Report();
         }
 
         private static void ScanningModulesSample(ContainerBuilder builder)
